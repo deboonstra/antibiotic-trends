@@ -1,5 +1,6 @@
 # Data
-data-raw
+data-raw/*
+!data-raw/README.md
 
-# Source files
+# OS files
 .DS_Store
