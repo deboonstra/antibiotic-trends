@@ -1,6 +1,9 @@
+# OS files
+.DS_Store
+
 # Data
 data-raw/*
 !data-raw/README.md
 
-# OS files
-.DS_Store
+# Explore
+explore
