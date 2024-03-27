@@ -4,9 +4,12 @@
 # Data
 data-raw/*
 !data-raw/README.md
+data/*
+!data/README.md
 
 # Explore
 explore
 
 # Outputs
 outputs/**/*.rds
+outputs/**/*.html
