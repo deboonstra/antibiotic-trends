@@ -12,7 +12,7 @@ ss <- function(
 ) {
 
   # Checking parameters ####
-  if ("ts" %in% class(y)) {
+  if (!("ts" %in% class(y))) {
     stop("y must be a stats::ts object.")
   }
 
