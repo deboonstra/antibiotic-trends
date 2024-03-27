@@ -1,0 +1,257 @@
+---
+title: "State-space modeling of monthly incidence for oral antibiotics"
+author: "Joe E. Cavanaugh, PhD and D. Erik Boonstra, MS"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 3
+---
+
+# Purpose
+As of `r Sys.Date()`, the purpose of this exploration is to determine when the oral antibiotics are prescribed the most. In the future, we hope to explore the impact that a disease like influenza has on the prescribing rate of these oral antibiotics. 
+
+```{r, include = FALSE, echo = FALSE}
+# Loading functions and packages ####
+R <- list.files(path = "./R", pattern = "*.R", full.names = TRUE) #nolint
+sapply(R, source, .GlobalEnv)
+knitr::opts_chunk$set(echo = FALSE, out.width = "100%", fig.align = "center")
+```
+
+# Data
+```{r}
+oral_ts <- readRDS(file = "./data/monthly_oral_ts.rds")
+```
+
+The times series range from `r as.integer(floor(stats::tsp(oral_ts[[1]])[1]))` to `r as.integer(floor(stats::tsp(oral_ts[[1]])[2]))`, where a complete time series is `r as.integer(floor(stats::tsp(oral_ts[[1]])[3]))` months. There are `r length(oral_ts)` oral antibiotics that were examined. These antibiotics have non-zero monthly incidence for all months during the observational window.
+
+# Results
+The extraction of the latent processes, which is a result of the state-space model that imposes a random walk on the trend component, are located here:
+```{r, echo = TRUE}
+extract <- readRDS(file = "./outputs/monthly-oral-ts/extract.rds")
+```
+where the time series were log-transformed and standardized.
+
+## Extraction of latent processes {.tabset .tabset-fade}
+The oral antibiotics were classified into seasons based on their peak month of incidence, which was identified by finding the month that had the largest average seasonal component throughout the entire observational window. The seasons were classified based on the meterological season calendar, where more information can be found [here](https://www.meteoswiss.admin.ch/weather/weather-and-climate-from-a-to-z/calendar-astronomical-and-meteorological-seasons.html).
+```{r}
+winter_months <- c(12, 1, 2)
+spring_months <- c(3, 4, 5)
+summer_months <- c(6, 7, 8)
+fall_months <- c(9, 10, 11)
+seasons_defn <- data.frame(
+  season = c("Winter", "Spring", "Summer", "Fall"),
+  months = c(
+    paste(x = winter_months, sep = " ", collapse = ", "),
+    paste(x = spring_months, sep = " ", collapse = ", "),
+    paste(x = summer_months, sep = " ", collapse = ", "),
+    paste(x = fall_months, sep = " ", collapse = ", ")
+  ),
+  avg_dates = c(
+    "Dec. 1st - Feb. 29th",
+    "Mar. 1st - May 31st",
+    "Jun. 1st - Aug. 31st",
+    "Sept. 1st - Nov. 30th"
+  )
+)
+tab <- knitr::kable(
+  x = seasons_defn,
+  format = "html",
+  align = "lrl",
+  col.names = c("Season", "Months included", "Dates of meterological seasons")
+)
+kableExtra::kable_styling(kable_input = tab, full_width = FALSE)
+```
+
+```{r}
+seasons <- lapply(
+  X = extract,
+  FUN = function(x) {
+    ts_info <- as.integer(floor(stats::tsp(x$ssm)))
+    dat <- data.frame(
+      year = rep(ts_info[1]:ts_info[2], each = ts_info[3]),
+      month = rep(1:ts_info[3], times = length(ts_info[1]:ts_info[2])),
+      ssm = x$ssm
+    )
+    peak_month <- dat |>
+      dplyr::group_by(month) |>
+      dplyr::summarise(mean_ssm = mean(ssm)) |>
+      dplyr::filter(mean_ssm == max(mean_ssm)) |>
+      dplyr::rename(max_ssm = mean_ssm) |>
+      dplyr::mutate(
+        season = dplyr::case_when(
+          month %in% fall_months ~ "fall",
+          month %in% winter_months ~ "winter",
+          month %in% spring_months ~ "spring",
+          month %in% summer_months ~ "summer"
+        )
+      )
+    return(peak_month)
+  }
+)
+abx_names <- data.frame(
+  name = names(extract),
+  dplyr::bind_rows(seasons)
+)
+seasons <- data.frame(
+  name = gsub(
+    pattern = "[[:punct:]]",
+    replacement = "/",
+    x = names(extract),
+    perl = TRUE
+  ),
+  dplyr::bind_rows(seasons)
+)
+seasons <- dplyr::arrange(.data = seasons, season, dplyr::desc(max_ssm))
+abx_names <- dplyr::arrange(.data = abx_names, season, dplyr::desc(max_ssm))
+extract <- extract[abx_names$name]
+```
+
+### Winter {.tabset .tabset-fade .tabset-pills}
+```{r}
+winter <- subset(
+  x = seasons,
+  subset = season == "winter",
+  select = c(name, month, max_ssm)
+)
+row.names(winter) <- NULL
+```
+
+There were `r nrow(winter)` oral antibiotics that were classified as peaking in the *winter*. While an antibiotic may peak during this season that does not indicate the antibiotic has a well defined seasonal component (i.e., relatively small peaks and troughs).
+
+#### Table of antibiotics
+```{r}
+tab <- knitr::kable(
+  x = winter,
+  format = "html",
+  digits = 3,
+  col.names = c("Antibiotic", "Peak month", "Maximum mean incidence")
+)
+kableExtra::kable_styling(kable_input = tab, full_width = FALSE)
+```
+
+#### Figures
+```{r}
+for (j in seq_along(extract)) {
+  if (seasons$season[j] == "winter") {
+    plot(
+      data = extract[[j]],
+      ylab = "Standardized log(Incidence of prescriptions)",
+      main = seasons$name[j],
+      oma = c(2, 2, 2, 0)
+    )
+  }
+}
+```
+
+### Summer {.tabset .tabset-fade .tabset-pills}
+```{r}
+summer <- subset(
+  x = seasons,
+  subset = season == "summer",
+  select = c(name, month, max_ssm)
+)
+row.names(summer) <- NULL
+```
+
+There were `r nrow(summer)` oral antibiotics that were classified as peaking in the *summer*. While an antibiotic may peak during this season that does not indicate the antibiotic has a well defined seasonal component (i.e., relatively small peaks and troughs).
+
+#### Table of antibiotics
+```{r}
+tab <- knitr::kable(
+  x = summer,
+  format = "html",
+  digits = 3,
+  col.names = c("Antibiotic", "Peak month", "Maximum mean incidence")
+)
+kableExtra::kable_styling(kable_input = tab, full_width = FALSE)
+```
+
+#### Figures
+```{r}
+for (j in seq_along(extract)) {
+  if (seasons$season[j] == "summer") {
+    plot(
+      data = extract[[j]],
+      ylab = "Standardized log(Incidence of prescriptions)",
+      main = seasons$name[j],
+      oma = c(2, 2, 2, 0)
+    )
+  }
+}
+```
+
+### Spring {.tabset .tabset-fade .tabset-pills}
+```{r}
+spring <- subset(
+  x = seasons,
+  subset = season == "spring",
+  select = c(name, month, max_ssm)
+)
+row.names(spring) <- NULL
+```
+
+There were `r nrow(spring)` oral antibiotics that were classified as peaking in the *spring*. While an antibiotic may peak during this season that does not indicate the antibiotic has a well defined seasonal component (i.e., relatively small peaks and troughs).
+
+#### Table of antibiotics
+```{r}
+tab <- knitr::kable(
+  x = spring,
+  format = "html",
+  digits = 3,
+  col.names = c("Antibiotic", "Peak month", "Maximum mean incidence")
+)
+kableExtra::kable_styling(kable_input = tab, full_width = FALSE)
+```
+
+#### Figures
+```{r}
+for (j in seq_along(extract)) {
+  if (seasons$season[j] == "spring") {
+    plot(
+      data = extract[[j]],
+      ylab = "Standardized log(Incidence of prescriptions)",
+      main = seasons$name[j],
+      oma = c(2, 2, 2, 0)
+    )
+  }
+}
+```
+
+### Fall {.tabset .tabset-fade .tabset-pills}
+```{r}
+fall <- subset(
+  x = seasons,
+  subset = season == "fall",
+  select = c(name, month, max_ssm)
+)
+row.names(fall) <- NULL
+```
+
+There were `r nrow(fall)` oral antibiotics that were classified as peaking in the *fall*. While an antibiotic may peak during this season that does not indicate the antibiotic has a well defined seasonal component (i.e., relatively small peaks and troughs).
+
+#### Table of antibiotics
+```{r}
+tab <- knitr::kable(
+  x = fall,
+  format = "html",
+  digits = 3,
+  col.names = c("Antibiotic", "Peak month", "Maximum mean incidence")
+)
+kableExtra::kable_styling(kable_input = tab, full_width = FALSE)
+```
+
+#### Figures
+```{r}
+for (j in seq_along(extract)) {
+  if (seasons$season[j] == "fall") {
+    plot(
+      data = extract[[j]],
+      ylab = "Standardized log(Incidence of prescriptions)",
+      main = seasons$name[j],
+      oma = c(2, 2, 2, 0)
+    )
+  }
+}
+```
